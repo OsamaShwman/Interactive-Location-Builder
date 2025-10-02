@@ -381,7 +381,7 @@ const LocationForm: React.FC<LocationFormProps> = ({ selectedCoords, selectedCou
 
                             <div>
                                 <label htmlFor={`q-type-${q.id}`} className="block text-sm font-medium text-slate-600">{t('questionTypeLabel')}</label>
-                                <select id={`q-type-${q.id}`} value={q.type} onChange={(e) => handleQuestionChange(qIndex, 'type', e.target.value as QuestionType)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md">
+                                <select id={`q-type-${q.id}`} value={q.type} onChange={(e) => handleQuestionChange(qIndex, 'type', e.target.value as QuestionType)} className="mt-1 block w-full pl-3 pr-10 py-2 bg-white text-slate-900 text-base border-slate-300 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md">
                                     <option value="short_answer">{t('questionTypeShortAnswer')}</option>
                                     <option value="true_false">{t('questionTypeTrueFalse')}</option>
                                     <option value="multiple_choice">{t('questionTypeMultipleChoice')}</option>
