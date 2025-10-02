@@ -1,0 +1,5 @@
+{
+  "name": "Map Admin: Interactive Location Builder",
+  "description": "An intuitive web application for creating and managing interactive, media-rich map locations with optional quizzes. Ideal for building custom tours or educational guides, with all data managed locally in your browser.",
+  "requestFramePermissions": []
+}
