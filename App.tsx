@@ -8,6 +8,7 @@ import LanguageSwitcher from './components/LanguageSwitcher';
 import TourGuide from './components/TourGuide';
 import { useLanguage } from './contexts/LanguageContext';
 import type { Location, Question, Place } from './types';
+import { getURLParams, hasRequiredParams } from './utils/urlParams';
 
 const validateLocationsData = (data: any): Location[] | null => {
   if (!Array.isArray(data)) {
@@ -55,23 +56,67 @@ const App: React.FC = () => {
   const { t, language } = useLanguage();
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  
+  const [isLoadingArtifact, setIsLoadingArtifact] = useState(false);
+
+  // Fetch artifact data from API if URL params exist
   useEffect(() => {
-    try {
-      const storedLocations = localStorage.getItem('locations');
-      if (storedLocations) {
-        const parsedData = JSON.parse(storedLocations);
-        const validatedLocations = validateLocationsData(parsedData);
-        if (validatedLocations) {
-          setLocations(validatedLocations);
-        } else {
-          console.warn('Invalid location data in localStorage, clearing it.');
-          localStorage.removeItem('locations');
+    const fetchArtifactData = async () => {
+      const urlParams = getURLParams();
+
+      // If URL params exist, try to fetch from API first
+      if (hasRequiredParams(urlParams)) {
+        setIsLoadingArtifact(true);
+        try {
+          const response = await fetch(`${urlParams.baseUrl}/studio/artifacts/info/${urlParams.artifactId}/`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${urlParams.token}`,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.artifact_data) {
+              try {
+                const parsedData = JSON.parse(data.artifact_data);
+                const validatedLocations = validateLocationsData(parsedData);
+                if (validatedLocations) {
+                  setLocations(validatedLocations);
+                  updateStoredLocations(validatedLocations);
+                  return; // Exit early, API data loaded
+                }
+              } catch (parseError) {
+                console.error('Failed to parse artifact_data:', parseError);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch artifact data:', error);
+        } finally {
+          setIsLoadingArtifact(false);
         }
       }
-    } catch (e) {
-      console.error('Failed to parse locations from localStorage', e);
-    }
+
+      // Fallback to localStorage if API fetch failed or no URL params
+      try {
+        const storedLocations = localStorage.getItem('locations');
+        if (storedLocations) {
+          const parsedData = JSON.parse(storedLocations);
+          const validatedLocations = validateLocationsData(parsedData);
+          if (validatedLocations) {
+            setLocations(validatedLocations);
+          } else {
+            console.warn('Invalid location data in localStorage, clearing it.');
+            localStorage.removeItem('locations');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse locations from localStorage', e);
+      }
+    };
+
+    fetchArtifactData();
   }, []);
 
   useEffect(() => {
@@ -232,6 +277,44 @@ const App: React.FC = () => {
     setBoundsToFit(null);
   }, []);
 
+  const handleSave = async () => {
+    if (locations.length === 0) {
+      alert(t('alert_noSave'));
+      return;
+    }
+
+    const urlParams = getURLParams();
+    if (!hasRequiredParams(urlParams)) {
+      alert(t('alert_saveMissingParams'));
+      return;
+    }
+
+    try {
+      const artifactData = JSON.stringify(locations);
+      const response = await fetch(`${urlParams.baseUrl}/studio/artifacts/update/${urlParams.artifactId}/`, {
+        method: 'PUT',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Authorization': `Bearer ${urlParams.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          artifacts: parseInt(urlParams.artifactId!),
+          artifact_data: artifactData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      alert(t('alert_saveSuccess'));
+    } catch (error) {
+      console.error('Save failed:', error);
+      alert(t('alert_saveError'));
+    }
+  };
+
   const handleExport = () => {
     if (locations.length === 0) {
       alert(t('alert_noExport'));
@@ -241,13 +324,13 @@ const App: React.FC = () => {
     const dataStr = JSON.stringify(locations, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(dataBlob);
-    
+
     const link = document.createElement("a");
     link.href = url;
     link.download = "locations.json";
     document.body.appendChild(link);
     link.click();
-    
+
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
@@ -382,6 +465,16 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen font-sans bg-sky-50 text-slate-800 overflow-hidden" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+      {/* Loading Overlay */}
+      {isLoadingArtifact && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl p-8 flex flex-col items-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600"></div>
+            <p className="text-slate-700 font-medium">{t('loadingArtifact')}</p>
+          </div>
+        </div>
+      )}
+
       {/* --- Left Control Panel --- */}
       <aside className={`w-[450px] max-w-[90vw] md:max-w-[35%] h-full flex flex-col bg-white shadow-lg z-20 transform transition-transform duration-300 ease-in-out ${language === 'ar' ? 'order-1 border-r-0 border-l border-slate-200' : 'border-r border-slate-200'} ${isSidebarOpen ? 'translate-x-0' : (language === 'ar' ? 'translate-x-full' : '-translate-x-full')}`}>
         <header className="p-6 border-b border-slate-200 flex-shrink-0 flex justify-between items-center">
@@ -439,26 +532,15 @@ const App: React.FC = () => {
               {t('importButton')}
             </button>
             <button
-              onClick={handleExport}
-              className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-sky-500 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
+              onClick={handleSave}
+              className="flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-green-500 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
               disabled={locations.length === 0}
               aria-disabled={locations.length === 0}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ltr:mr-2 rtl:ml-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z" />
               </svg>
-              {t('exportButton')}
-            </button>
-            <button
-              onClick={handleClearAllLocations}
-              className="flex-initial inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-red-500 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
-              disabled={locations.length === 0}
-              aria-disabled={locations.length === 0}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ltr:mr-2 rtl:ml-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-                </svg>
-              {t('clearAllButton')}
+              {t('saveButton')}
             </button>
           </div>
         </footer>
