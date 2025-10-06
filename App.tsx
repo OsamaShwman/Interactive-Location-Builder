@@ -77,18 +77,22 @@ const App: React.FC = () => {
 
           if (response.ok) {
             const data = await response.json();
-            if (data.artifact_data) {
-              try {
-                const parsedData = JSON.parse(data.artifact_data);
-                const validatedLocations = validateLocationsData(parsedData);
-                if (validatedLocations) {
-                  setLocations(validatedLocations);
-                  updateStoredLocations(validatedLocations);
-                  return; // Exit early, API data loaded
+            // Check if artifact_data exists in the response (even if null)
+            if ('artifact_data' in data) {
+              if (data.artifact_data) {
+                try {
+                  const parsedData = JSON.parse(data.artifact_data);
+                  const validatedLocations = validateLocationsData(parsedData);
+                  if (validatedLocations) {
+                    setLocations(validatedLocations);
+                    updateStoredLocations(validatedLocations);
+                  }
+                } catch (parseError) {
+                  console.error('Failed to parse artifact_data:', parseError);
                 }
-              } catch (parseError) {
-                console.error('Failed to parse artifact_data:', parseError);
               }
+              // If artifact_data is explicitly null, don't load from localStorage
+              return;
             }
           }
         } catch (error) {
